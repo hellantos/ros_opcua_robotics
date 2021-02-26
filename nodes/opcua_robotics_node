@@ -1,0 +1,47 @@
+#!/usr/bin/env python
+import rospy
+import asyncio
+import roslib; roslib.load_manifest('urdfdom_py')
+from ros_opcua_robotics.ros_opcua_robotics_node import ros_opcua_robotics_node
+from ros_opcua_robotics.opcua_robotics import OpcuaRobotics
+from urdf_parser_py.urdf import URDF
+
+async def robotics_server_from_urdf():
+	print(rospy.get_param("/robot_description"))
+	robot = URDF.from_parameter_server()
+	robotics_server = await OpcuaRobotics.create("{}System".format(robot.name))
+	await robotics_server.add_controller("ROS-IndustrialController")
+	await robotics_server.add_robot(robot.name)
+	await robotics_server.connect_controller_to_robot()
+	for joint in robot.joints:
+		if joint.type != "fixed":
+			await robotics_server.add_axis(joint.name)
+	for transmission in robot.transmissions:
+		powertrain_name = transmission.name
+		joint_name = transmission.joints[0].name
+		motor_name = transmission.actuators[0].name
+		drive_name = "{}_{}".format(motor_name, transmission.joints[0].hardwareInterfaces[0].replace('hardware_interface/',''))
+
+		await robotics_server.add_powertrain(powertrain_name)
+		await robotics_server.connect_powertrain_to_axis(powertrain_name, joint_name)
+		await robotics_server.add_motor(powertrain_name, motor_name)
+		await robotics_server.add_drive(powertrain_name, drive_name)
+		await robotics_server.connect_motor_to_drive(motor_name, drive_name)
+
+	return robotics_server
+	
+
+async def init():
+	node = ros_opcua_robotics_node()
+	node.subscribe()
+	await robotics_server.start()
+
+
+
+
+
+if __name__ == '__main__':
+	node = ros_opcua_robotics_node()
+	asyncio.run(node.run())
+
+	
